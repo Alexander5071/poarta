@@ -1,27 +1,32 @@
-//comenzi:
-//1. POARTA => deschide poarta
+//commands:
+//1. POARTA => open the gate
 //2. ADD:"0712345678","Nume" => adds phone number on the SIM
 //3. REMOVE:"0712345678" => removes phone number from the SIM
+//AT+CPIN? => checks wheter SIM is ready
+
 #include <SoftwareSerial.h>
 #include <ctype.h>
 #define poarta 10
 #define SIM_SIZE 250
 #define rst 4
 #define DEBUG A0
+#define Tx_GSM 3
+#define Rx_GSM 2
 
-void(* resetFunc) (void) = 0;//functia de resetare arduino
+void(* resetFunc) (void) = 0;//arduino reset function
 
 String getcommand(bool ok=0);
 char ch;
 String s, nr,nume,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
-int i,j,mx=0,l,v[251],errnr=0;
+int i,j,mx=0,l,v[SIM_SIZE+1],errnr=0;
 bool ok,bypass=0;
 unsigned long prec,curent,ulmax=4294967295,timp;
 
 //Create software serial object to communicate with SIM800L
-SoftwareSerial mySerial(3, 2); //SIM800L Tx & Rx is connected to Arduino #3 & #2
+SoftwareSerial mySerial(Tx_GSM,Rx_GSM);//SIM800L Tx & Rx is connected to Arduino #3 & #2
 void setup()
 {
+	//init control pin of gates
 	pinMode(poarta,OUTPUT);
 	digitalWrite(poarta,LOW);
 	pinMode(rst,OUTPUT);
@@ -36,18 +41,18 @@ void setup()
 	//Begin serial communication with Arduino and SIM800L
 	mySerial.begin(9600);
 
-  //setup built-in LED
+	//setup built-in LED
 	pinMode(LED_BUILTIN, OUTPUT);
 	digitalWrite(LED_BUILTIN,LOW);
 	delay(1000);
 
-  //Debug Mode Activation
+	//Debug Mode Activation
 	if(analogRead(DEBUG)<=50)Serial.println("==DEBUG MODE==");
 	while(analogRead(DEBUG)<=50)
 	{
-		Serial.print("Valoare pin: ");
-		Serial.println(analogRead(DEBUG));
-		while (Serial.available())
+		//Serial.print("Valoare pin: ");
+		//Serial.println(analogRead(DEBUG));
+		while(Serial.available())
 		{
 			mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
 		}
@@ -63,20 +68,20 @@ void setup()
 	updateSerial();*/
 	cls();
 
-  //various SMS settings
-	mySerial.println("ALT+CLIP=1");// Display calling phone number
+	//various SMS settings
+	mySerial.println("ALT+CLIP=1");//display calling phone number
 	updateSerial();
-	mySerial.println("AT+CMGF=1"); // Configuring TEXT mode
+	mySerial.println("AT+CMGF=1");//configuring TEXT mode
 	updateSerial();
-	mySerial.println("AT+CNMI=1,2,0,0,0"); // Decides how newly arrived SMS messages should be handled
+	mySerial.println("AT+CNMI=1,2,0,0,0");//decides how newly arrived SMS messages should be handled
 	updateSerial();
 	mySerial.println("AT+CPBS=\"SM\"");
 	updateSerial();
 
-  //reading the phonebook to keep in RAM
-  for(i=1;i<=SIM_SIZE;i++)
+	//reading the phonebook to keep in RAM
+	for(i=1;i<=SIM_SIZE;i++)
 		{//delay(100);
-			sendcommand(ReadEntry + String(i));//ask for the number saved in position i
+			sendcommand(ReadEntry+String(i));//ask for the number saved in position i
 			s=getcommand();
 			if(s.length()>7&&checkcifre(getnumber(s)))v[++mx]=i;//if valid number is stored
 			else if(s==OK)continue;//if no number is stored
@@ -97,11 +102,11 @@ void setup()
 		 if(ch=='0')retry();
 		 cls();
 	}while(ok);
-	mySerial.println("AT+CREG=1");//always announce on serial network changes
+	mySerial.println("AT+CREG=1");//always announce network changes on serial
 	updateSerial();
 	cls();
 
-  //finished setup
+	//finished setup
 	digitalWrite(LED_BUILTIN,HIGH);
 	delay(2000);
 	digitalWrite(LED_BUILTIN,LOW);
@@ -110,7 +115,7 @@ void setup()
 
 void loop()
 {
-  if(bypass)bypass=0;
+  	if(bypass)bypass=0;
 	else s=getcommand(true);
 	if(s==RING)//call received
 	{ok=1;
@@ -172,7 +177,7 @@ void loop()
 		error();
 		retry();
 	}
-	while (Serial.available())
+	while(Serial.available())
 	{
 		mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
 	}
@@ -181,6 +186,7 @@ void loop()
 	curent=millis();
 	if(curent<prec)timp=ulmax-prec+curent+1;//ulong size limit exceeded
 	else timp=curent-prec;
+	Serial.println(timp/1000);
 	if(timp>=30000)//if there's been more that 30 seconds from last SIM check
 	{
 		sendcommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
@@ -188,20 +194,21 @@ void loop()
 		if(s.startsWith(RING)||s.startsWith("+CMT:")||s.startsWith("+CREG: "))bypass=1;
 		else if(s.startsWith("ERROR"))
 		{
-			digitalWrite(rst,HIGH);
+			error();
+			/*digitalWrite(rst,HIGH);
 			delay(110);
 			digitalWrite(rst,LOW);
-			resetFunc();
+			resetFunc();*/
 		}
-		//prec=curent; /////versiunea care strica tot 
+		prec=curent;/////the line that broke everything
 	}
-	prec=curent;
+	//prec=curent; ///backup of working (but flawed) version
 }
 
 void updateSerial()
 {
 	delay(500);
-	while (Serial.available())
+	while(Serial.available())
 	{
 		mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
 	}
