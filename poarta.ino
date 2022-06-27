@@ -5,7 +5,6 @@
 //AT+CPIN? => checks wheter SIM is ready
 
 #include <SoftwareSerial.h>
-#include <ctype.h>
 #define poarta 10
 #define SIM_SIZE 250
 #define rst 4
@@ -15,9 +14,9 @@
 
 void(* resetFunc) (void) = 0;//arduino reset function
 
-String getcommand(bool ok=0);
+String getCommand(bool ok=0);
 char ch;
-String s, nr,nume,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
+String s,nr,name,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
 int i,j,mx=0,l,v[SIM_SIZE+1],errnr=0;
 bool ok,bypass=0;
 unsigned long prec,curent,ulmax=4294967295,timp;
@@ -42,7 +41,7 @@ void setup()
 	mySerial.begin(9600);
 
 	//setup built-in LED
-	pinMode(LED_BUILTIN, OUTPUT);
+	pinMode(LED_BUILTIN,OUTPUT);
 	digitalWrite(LED_BUILTIN,LOW);
 	delay(1000);
 
@@ -59,52 +58,17 @@ void setup()
 		updateSerial();
 	}
 	
-	mySerial.println("AT"); //Once the handshake test is successful, it will back to OK
-	updateSerial();
-	
 	/*mySerial.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
 	updateSerial();
 	mySerial.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
 	updateSerial();*/
-	cls();
 
-	//various SMS settings
-	mySerial.println("ALT+CLIP=1");//display calling phone number
-	updateSerial();
-	mySerial.println("AT+CMGF=1");//configuring TEXT mode
-	updateSerial();
-	mySerial.println("AT+CNMI=1,2,0,0,0");//decides how newly arrived SMS messages should be handled
-	updateSerial();
-	mySerial.println("AT+CPBS=\"SM\"");
-	updateSerial();
-
-	//reading the phonebook to keep in RAM
-	for(i=1;i<=SIM_SIZE;i++)
-		{//delay(100);
-			sendcommand(ReadEntry+String(i));//ask for the number saved in position i
-			s=getcommand();
-			if(s.length()>7&&checkcifre(getnumber(s)))v[++mx]=i;//if valid number is stored
-			else if(s==OK)continue;//if no number is stored
-			else {i--;error();cls();continue;}//error, retry reading same number
-		}
+	//setup
+	setupSMS();
+	readPhonebook();
 	Serial.println(String(mx)+" nr incarcate");
-	/*s="+CPBR: 1,\"0767000747\",162,kjghdkjb";
-	Serial.println(s.indexOf('\"'));*/
 	cls();
-	ok=1;
-	do
-	{sendcommand("AT+CREG?");//Check whether it has registered in the network
-		 s=getcommand();
-		 ch=s.charAt(9);
-		 if(ch!='1')error();
-		 else ok=0;
-		 cls();
-		 if(ch=='0')retry();
-		 cls();
-	}while(ok);
-	mySerial.println("AT+CREG=1");//always announce network changes on serial
-	updateSerial();
-	cls();
+	firstNetworkRegister();
 
 	//finished setup
 	digitalWrite(LED_BUILTIN,HIGH);
@@ -116,58 +80,58 @@ void setup()
 void loop()
 {
   	if(bypass)bypass=0;
-	else s=getcommand(true);
+	else s=getCommand(true);
 	if(s==RING)//call received
 	{ok=1;
-		s=getcommand();
-		if(s==OK)s=getcommand();
-		nr=getnumber(s);
+		s=getCommand();
+		if(s==OK)s=getCommand();
+		nr=getNumber(s);
 		l=nr.length();
-		if(l==0){Serial.println("Hidden number");sendcommand(ath);}
-		else if(checkcifre(nr))
+		if(l==0){Serial.println("Hidden number");sendCommand(ath);}
+		else if(checkDigits(nr))
 		{
 			nr=add40(nr);
-			sendcommand(ath);//reject the call
+			sendCommand(ath);//reject the call
 			while(mySerial.available())mySerial.read();
 			Serial.println(nr);
-			if(checknr(nr))activate();
+			if(checkNr(nr))activate();
 		}
 	}
 	else if(s.startsWith("+CMT:"))//SMS received
 	{
-		nr=add40(getnumber(s));//get sender of SMS
+		nr=add40(getNumber(s));//get sender of SMS
 		Serial.println(nr);
-		s=getcommand();
-		if(s==OK)s=getcommand();
-		i=checknr(nr);
+		s=getCommand();
+		if(s==OK)s=getCommand();
+		i=checkNr(nr);
 		Serial.println(String(i));
 		if(i)
 		{
 			if(s.startsWith("P"))activate();//received message "POARTA"
 			else if(s.startsWith("ADD"))
 			{
-				nr=remove40(getnumber(s));
-				Serial.println("Nr de adaugat "+nr);
-				if(checkcifre(nr))
-				{Serial.println("s este "+s);
-					nume=getnumber(s);
-					Serial.println("Nume de adaugat "+nume);
+				nr=remove40(getNumber(s));
+				Serial.println("Number to be added: "+nr);
+				if(checkDigits(nr))
+				{//Serial.println("s este "+s);
+					name=getNumber(s);
+					Serial.println("Name to be added: "+name);
 					for(i=1;i<=SIM_SIZE;i++)
 					{
 						for(j=1;j<=mx;j++)if(i==v[j])break;
 						if(j>mx)break;
 					}
-					sendcommand("AT+CPBW="+String(i)+",\""+nr+"\",129,\""+nume+'\"');
+					sendCommand("AT+CPBW="+String(i)+",\""+nr+"\",129,\""+name+'\"');
 					v[++mx]=i;
 				}
 			}
 			else if(s.startsWith("REMOVE"))
 			{
-				nr=add40(getnumber(s));
-				i=checknr(nr);
+				nr=add40(getNumber(s));
+				i=checkNr(nr);
 				for(j=1;j<=mx;j++)
 					if(v[j]==i){v[j]=v[mx--];break;}
-				if(j<=mx)sendcommand("AT+CPBW="+String(i));
+				if(j<=mx)sendCommand("AT+CPBW="+String(i));
 			}
 		}
 		cls();
@@ -186,11 +150,11 @@ void loop()
 	curent=millis();
 	if(curent<prec)timp=ulmax-prec+curent+1;//ulong size limit exceeded
 	else timp=curent-prec;
-	Serial.println(timp/1000);
+	Serial.println(timp/1000);//to be removed when debugging is finished
 	if(timp>=30000)//if there's been more that 30 seconds from last SIM check
 	{
-		sendcommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
-		s=getcommand();
+		sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
+		s=getCommand();
 		if(s.startsWith(RING)||s.startsWith("+CMT:")||s.startsWith("+CREG: "))bypass=1;
 		else if(s.startsWith("ERROR"))
 		{
@@ -198,7 +162,10 @@ void loop()
 			/*digitalWrite(rst,HIGH);
 			delay(110);
 			digitalWrite(rst,LOW);
-			resetFunc();*/
+			setupSMS();
+			firstNetworkRegister();
+			*/
+			//////resetFunc();
 		}
 		prec=curent;/////the line that broke everything
 	}
@@ -217,7 +184,7 @@ void updateSerial()
 		Serial.write(mySerial.read());//Forward what Software Serial received to Serial Port
 	}
 }
-String getcommand(bool ok=0)/*ok parameter controls whether the function waits
+String getCommand(bool ok=0)/*ok parameter controls whether the function waits
 for input or just forwards whatever is available at the time of being called*/
 {String s = "";char ch;
 	if(ok&&!mySerial.available())return s;
@@ -225,29 +192,28 @@ for input or just forwards whatever is available at the time of being called*/
 	{
 		while(!mySerial.available());//wait for a character to be received
 		ch=mySerial.read();
-		//Serial.print(ch);
 		s+=ch;
 	}
 	while(ch!='\n');//wait for newline
 	s.trim();//remove leading and trailing whitespaces
 	s.toUpperCase();
-	if(s=="")return getcommand();
+	if(s=="")return getCommand();//get another command if empty line was read
 	Serial.println(s);
 	return s;
 }
-void sendcommand(String s)
+void sendCommand(String s)
 {String temp;
 	mySerial.println(s);
 	delay(20);
-	temp=getcommand();
+	temp=getCommand();
 	delay(20);
 	if(s!=temp)//command erroneously received by the GSM module
-  {
-    cls();
-    sendcommand(s);//retry sending the same command
-  }
+	{
+		cls();
+		sendCommand(s);//retry sending the same command
+	}
 }
-String getnumber(String &s)
+String getNumber(String &s)
 {int k=s.indexOf('\"');
 	if(k==-1)return "0";//if there's no " in the string
 	s=s.substring(k+1);//erase first " in string and anything before it
@@ -258,24 +224,24 @@ String getnumber(String &s)
 }
 String add40(String s)//adds +40 prefix to a non-prefixed Romanian phone number
 {
-	if (s.length()==10)s="+4"+s;
+	if(s.length()==10)s="+4"+s;
 	return s;
 }
 String remove40(String s)//removes the +40 prefix of a Romanian phone number
 {
-	if (s.length()==12)s=s.substring(2);
+	if(s.length()==12)s=s.substring(2);
 	return s;
 }
-int checknr(String nr)
+int checkNr(String nr)
 {int i;String temp;
 	for(i=1;i<=mx;i++)
 	{
-		sendcommand(ReadEntry+String(v[i]));
-		temp=getcommand();
+		sendCommand(ReadEntry+String(v[i]));
+		temp=getCommand();
 		cls();
 		if(s.startsWith(OK))continue;
-		temp=getnumber(temp);
-		if(!checkcifre(temp)){i--;error();continue;}
+		temp=getNumber(temp);
+		if(!checkDigits(temp)){i--;error();continue;}
 		if(nr==add40(temp))return i;
 		delay(20);
 	}
@@ -290,10 +256,10 @@ void activate()
 	digitalWrite(LED_BUILTIN,LOW);
 	Serial.println("Activated");
 }
-int checkcifre(String nr)
+int checkDigits(String nr)
 {int l=nr.length(),i;
 	if(l!=10&&l!=12)return 0;
-  if(!isdigit(nr.charAt(0))&&nr.charAt(0)!='+')return 0;
+  	if(!isdigit(nr.charAt(0))&&nr.charAt(0)!='+')return 0;
 	for(i=1;i<l;i++)if(!isdigit(nr.charAt(i)))return 0;
 	return l;
 }
@@ -303,14 +269,72 @@ void cls()
 }
 void error()
 {int i;
-	for(i=1;i<=5;i++){digitalWrite(LED_BUILTIN,HIGH);delay(100);digitalWrite(LED_BUILTIN,LOW);delay(100);}
+	for(i=1;i<=5;i++)
+	{
+		digitalWrite(LED_BUILTIN,HIGH);
+		delay(100);
+		digitalWrite(LED_BUILTIN,LOW);
+		delay(100);
+	}
 }
 void retry()
 {
-	sendcommand("AT+CSQ");
-	getcommand();
-	sendcommand("AT+COPS=1,2,\"22601\"");
-	getcommand();
+	sendCommand("AT+CSQ");
+	getCommand();
+	sendCommand("AT+COPS=1,2,\"22601\"");
+	getCommand();
 	delay(1000);
-	sendcommand("AT+COPS=0");
+	sendCommand("AT+COPS=0");
+}
+
+void setupSMS()//various SMS settings
+{
+	while(handshake()!=true);//wait until the handshake is successful
+	mySerial.println("ALT+CLIP=1");//display calling phone number
+	updateSerial();
+	mySerial.println("AT+CMGF=1");//configuring TEXT mode
+	updateSerial();
+	mySerial.println("AT+CNMI=1,2,0,0,0");//decides how newly arrived SMS messages should be handled
+	updateSerial();
+	mySerial.println("AT+CPBS=\"SM\"");
+	updateSerial();
+}
+
+bool handshake()
+{
+	cls();
+	sendCommand("AT");//once the handshake test is successful, it will back to OK
+	s=getCommand();
+	cls();
+	return s==OK;
+}
+
+void readPhonebook()//reading the phonebook to keep in RAM
+{
+	for(i=1;i<=SIM_SIZE;i++)
+	{//delay(100);
+		sendCommand(ReadEntry+String(i));//ask for the number saved in position i
+		s=getCommand();
+		if(s.length()>7&&checkDigits(getNumber(s)))v[++mx]=i;//if valid number is stored
+		else if(s==OK)continue;//if no number is stored
+		else {i--;error();cls();continue;}//error, retry reading same number
+	}
+}
+
+void firstNetworkRegister()
+{
+	ok=1;
+	do
+	{sendCommand("AT+CREG?");//Check whether it has registered in the network
+		s=getCommand();
+		ch=s.charAt(9);
+		if(ch!='1')error();
+		else ok=0;
+		cls();
+		if(ch=='0')retry();
+		cls();
+	}while(ok);
+	mySerial.println("AT+CREG=1");//always announce network changes on serial
+	updateSerial();
+	cls();
 }
