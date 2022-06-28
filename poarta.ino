@@ -25,7 +25,7 @@ unsigned long prec,curent,ulmax=4294967295,timp;
 SoftwareSerial mySerial(Tx_GSM,Rx_GSM);//SIM800L Tx & Rx is connected to Arduino #3 & #2
 void setup()
 {
-	//init control pin of gates
+	//init control pins
 	pinMode(poarta,OUTPUT);
 	digitalWrite(poarta,LOW);
 	pinMode(rst,OUTPUT);
@@ -160,11 +160,14 @@ void loop()
 		{
 			error();
 			digitalWrite(rst,HIGH);
+			mySerial.end();
 			delay(110);
 			digitalWrite(rst,LOW);
+			delay(5000);//SMS breaks without this pause
+			mySerial.begin(9600);
+			delay(1000);//just to be sure
 			setupSMS();
 			firstNetworkRegister();
-			
 			//////resetFunc();
 		}
 		prec=curent;/////the line that broke everything
@@ -290,6 +293,7 @@ void retry()
 void setupSMS()//various SMS settings
 {
 	while(handshake()!=true);//wait until the handshake is successful
+	cls();
 	mySerial.println("ALT+CLIP=1");//display calling phone number
 	updateSerial();
 	mySerial.println("AT+CMGF=1");//configuring TEXT mode
