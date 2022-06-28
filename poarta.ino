@@ -7,7 +7,7 @@
 #include <SoftwareSerial.h>
 #define poarta 10
 #define SIM_SIZE 250
-#define rst 4
+#define rst A5
 #define DEBUG A0
 #define Tx_GSM 3
 #define Rx_GSM 2
@@ -136,7 +136,7 @@ void loop()
 		}
 		cls();
 	}
-	else if(s.startsWith("+CREG: ")&&s.charAt(7)==0)//schimbare statut retea in 0
+	else if(s.startsWith("+CREG: ")&&s.charAt(7)==0)//if network status changed to 0
 	{
 		error();
 		retry();
@@ -159,12 +159,12 @@ void loop()
 		else if(s.startsWith("ERROR"))
 		{
 			error();
-			/*digitalWrite(rst,HIGH);
+			digitalWrite(rst,HIGH);
 			delay(110);
 			digitalWrite(rst,LOW);
 			setupSMS();
 			firstNetworkRegister();
-			*/
+			
 			//////resetFunc();
 		}
 		prec=curent;/////the line that broke everything
