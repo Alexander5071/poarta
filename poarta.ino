@@ -150,7 +150,7 @@ void loop()
 	curent=millis();
 	if(curent<prec)timp=ulmax-prec+curent+1;//ulong size limit exceeded
 	else timp=curent-prec;
-	Serial.println(timp/1000);//to be removed when debugging is finished
+	//Serial.println(timp/1000);//to be removed when debugging is finished
 	if(timp>=30000)//if there's been more that 30 seconds from last SIM check
 	{
 		sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
@@ -168,9 +168,18 @@ void loop()
 			delay(1000);//just to be sure
 			setupSMS();
 			firstNetworkRegister();
+
+			///to be removed after debugging
+			sendCommand("ATD+ +40767000747;");
+			delay(5000);
+			sendCommand(ath);
+			cls();
+			///to be removed after debugging
+
+
 			//////resetFunc();
 		}
-		prec=curent;/////the line that broke everything
+		prec=millis();/////the line that broke everything
 	}
 	//prec=curent; ///backup of working (but flawed) version
 }
