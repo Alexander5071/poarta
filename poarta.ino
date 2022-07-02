@@ -13,12 +13,12 @@
 #define Rx_GSM 2
 
 void(* resetFunc) (void) = 0;//arduino reset function
-
 String getCommand(bool ok=0);
+
 char ch;
 String s,nr,name,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
-int i,j,mx=0,l,v[SIM_SIZE+1],errnr=0;
-bool ok,bypass=0;
+int i,j,mx=0,l,v[SIM_SIZE+1];
+bool ok;
 unsigned long prec,curent,ulmax=4294967295,timp;
 
 //Create software serial object to communicate with SIM800L
@@ -79,10 +79,9 @@ void setup()
 
 void loop()
 {
-  	if(bypass)bypass=0;
-	else s=getCommand(true);
+	s=getCommand(true);
 	if(s==RING)//call received
-	{ok=1;
+	{
 		s=getCommand();
 		if(s==OK)s=getCommand();
 		nr=getNumber(s);
@@ -141,6 +140,31 @@ void loop()
 		error();
 		retry();
 	}
+	else if(s.startsWith("ERROR"))//GSM module reset
+	{
+		error();
+		digitalWrite(rst,HIGH);
+		mySerial.end();
+		delay(110);
+		digitalWrite(rst,LOW);
+		delay(5000);//SMS breaks without this pause
+		mySerial.begin(9600);
+		delay(1000);//just to be sure
+		setupSMS();
+		cls();
+		firstNetworkRegister();
+
+		///to be removed after debugging
+		sendCommand("ATD+ +40767000747;");
+		delay(5000);
+		sendCommand(ath);
+		Serial.println("Reboot successful!");
+		cls();
+		///to be removed after debugging
+
+
+		//////resetFunc();
+	}
 	while(Serial.available())
 	{
 		mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
@@ -154,34 +178,8 @@ void loop()
 	if(timp>=30000)//if there's been more that 30 seconds from last SIM check
 	{
 		sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
-		s=getCommand();
-		if(s.startsWith(RING)||s.startsWith("+CMT:")||s.startsWith("+CREG: "))bypass=1;
-		else if(s.startsWith("ERROR"))
-		{
-			error();
-			digitalWrite(rst,HIGH);
-			mySerial.end();
-			delay(110);
-			digitalWrite(rst,LOW);
-			delay(5000);//SMS breaks without this pause
-			mySerial.begin(9600);
-			delay(1000);//just to be sure
-			setupSMS();
-			firstNetworkRegister();
-
-			///to be removed after debugging
-			sendCommand("ATD+ +40767000747;");
-			delay(5000);
-			sendCommand(ath);
-			cls();
-			///to be removed after debugging
-
-
-			//////resetFunc();
-		}
-		prec=millis();/////the line that broke everything
+		prec=millis();
 	}
-	//prec=curent; ///backup of working (but flawed) version
 }
 
 void updateSerial()
@@ -302,7 +300,6 @@ void retry()
 void setupSMS()//various SMS settings
 {
 	while(handshake()!=true);//wait until the handshake is successful
-	cls();
 	mySerial.println("ALT+CLIP=1");//display calling phone number
 	updateSerial();
 	mySerial.println("AT+CMGF=1");//configuring TEXT mode
