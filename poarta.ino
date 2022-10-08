@@ -23,6 +23,7 @@ unsigned long prec,curent,ulmax=4294967295,timp;
 
 //Create software serial object to communicate with SIM800L
 SoftwareSerial mySerial(Tx_GSM,Rx_GSM);//SIM800L Tx & Rx is connected to Arduino #3 & #2
+
 void setup()
 {
 	//init control pins
@@ -31,6 +32,8 @@ void setup()
 	pinMode(rst,OUTPUT);
 	digitalWrite(rst,LOW);
 	pinMode(DEBUG,INPUT);
+
+	restartModule(1000);
 
 	//Begin serial communication with Arduino and Arduino IDE (Serial Monitor)
 	Serial.begin(9600);
@@ -64,11 +67,11 @@ void setup()
 	updateSerial();*/
 
 	//setup
+	firstNetworkRegister();
 	setupSMS();
 	readPhonebook();
 	Serial.println(String(mx)+" nr incarcate");
 	cls();
-	firstNetworkRegister();
 
 	//finished setup
 	digitalWrite(LED_BUILTIN,HIGH);
@@ -140,29 +143,13 @@ void loop()
 		error();
 		retry();
 	}
-	else if(s.startsWith("ERROR"))//GSM module reset
+	else if(s.startsWith("ERROR"))//GSM module reboot
 	{
-		error();
-		digitalWrite(rst,HIGH);
-		mySerial.end();
-		delay(110);
-		digitalWrite(rst,LOW);
-		delay(5000);//SMS breaks without this pause
-		mySerial.begin(9600);
-		delay(1000);//just to be sure
+		reboot();
+		firstNetworkRegister();
 		setupSMS();
 		cls();
-		firstNetworkRegister();
-
-		///to be removed after debugging
-		sendCommand("ATD+ +40767000747;");
-		delay(5000);
-		sendCommand(ath);
 		Serial.println("Reboot successful!");
-		cls();
-		///to be removed after debugging
-
-
 		//////resetFunc();
 	}
 	while(Serial.available())
@@ -295,6 +282,7 @@ void retry()
 	getCommand();
 	delay(1000);
 	sendCommand("AT+COPS=0");
+	getCommand();
 }
 
 void setupSMS()//various SMS settings
@@ -337,6 +325,11 @@ void firstNetworkRegister()
 	do
 	{sendCommand("AT+CREG?");//Check whether it has registered in the network
 		s=getCommand();
+		if(s.startsWith("ERROR"))//GSM module reboot
+		{
+			reboot();
+			continue;
+		}
 		ch=s.charAt(9);
 		if(ch!='1')error();
 		else ok=0;
@@ -347,4 +340,29 @@ void firstNetworkRegister()
 	mySerial.println("AT+CREG=1");//always announce network changes on serial
 	updateSerial();
 	cls();
+}
+
+void restartModule(int timeToReset)
+{
+	digitalWrite(rst,HIGH);
+	delay(timeToReset);
+	digitalWrite(rst,LOW);
+}
+
+void callMyself()
+{
+	sendCommand("ATD+ +40767000747;");
+	delay(5000);
+	sendCommand(ath);
+	cls();
+}
+
+void reboot()
+{
+	error();
+	mySerial.end();
+	restartModule(1000);
+	delay(5000);//SMS breaks without this pause
+	mySerial.begin(9600);
+	delay(1000);//just to be sure
 }
