@@ -233,6 +233,7 @@ int checkNr(String nr)
 {int i;String temp;
 	for(i=1;i<=mx;i++)
 	{
+    	cls();
 		sendCommand(ReadEntry+String(v[i]));
 		temp=getCommand();
 		cls();
@@ -310,7 +311,9 @@ bool handshake()
 void readPhonebook()//reading the phonebook to keep in RAM
 {
 	for(i=1;i<=SIM_SIZE;i++)
-	{//delay(100);
+	{
+		cls();
+		//delay(5000);
 		sendCommand(ReadEntry+String(i));//ask for the number saved in position i
 		s=getCommand();
 		if(s.length()>7&&checkDigits(getNumber(s)))v[++mx]=i;//if valid number is stored
