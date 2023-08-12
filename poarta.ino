@@ -14,6 +14,7 @@
 
 void(* resetFunc) (void) = 0;//arduino reset function
 String getCommand(bool ok=0);
+void reboot(int timeToReboot=3000);
 
 char ch;
 String s,nr,name,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
@@ -87,14 +88,15 @@ void loop()
 	{
 		s=getCommand();
 		if(s==OK)s=getCommand();
+		sendCommand(ath);//reject the call
 		nr=getNumber(s);
 		l=nr.length();
-		if(l==0){Serial.println("Hidden number");sendCommand(ath);}
+		if(l==0)Serial.println("Hidden number");
 		else if(checkDigits(nr))
 		{
 			nr=add40(nr);
-			sendCommand(ath);//reject the call
-			while(mySerial.available())mySerial.read();
+			delay(500);//leave time for module to recover from call
+			cls();
 			Serial.println(nr);
 			if(checkNr(nr))activate();
 		}
@@ -145,11 +147,7 @@ void loop()
 	}
 	else if(s.startsWith("ERROR"))//GSM module reboot
 	{
-		reboot();
-		firstNetworkRegister();
-		setupSMS();
-		cls();
-		Serial.println("Reboot successful!");
+		masterReboot();
 		//////resetFunc();
 	}
 	while(Serial.available())
@@ -164,7 +162,8 @@ void loop()
 	//Serial.println(timp/1000);//to be removed when debugging is finished
 	if(timp>=30000)//if there's been more that 30 seconds from last SIM check
 	{
-		sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
+		// sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
+		sendCommand("AT+CPIN?");
 		prec=millis();
 	}
 }
@@ -233,7 +232,7 @@ int checkNr(String nr)
 {int i;String temp;
 	for(i=1;i<=mx;i++)
 	{
-    	cls();
+    cls();
 		sendCommand(ReadEntry+String(v[i]));
 		temp=getCommand();
 		cls();
@@ -241,7 +240,7 @@ int checkNr(String nr)
 		temp=getNumber(temp);
 		if(!checkDigits(temp)){i--;error();continue;}
 		if(nr==add40(temp))return i;
-		delay(20);
+		delay(50);
 	}
 	return 0;
 }
@@ -280,10 +279,20 @@ void retry()
 	sendCommand("AT+CSQ");
 	getCommand();
 	sendCommand("AT+COPS=1,2,\"22601\"");
-	getCommand();
+	s=getCommand();
+	if(s.startsWith("ERROR"))
+	{
+		masterReboot();
+		return;
+	}
 	delay(1000);
 	sendCommand("AT+COPS=0");
-	getCommand();
+	s=getCommand();
+	if(s.startsWith("ERROR"))
+	{
+		masterReboot();
+		return;
+	}
 }
 
 void setupSMS()//various SMS settings
@@ -325,6 +334,14 @@ void readPhonebook()//reading the phonebook to keep in RAM
 void firstNetworkRegister()
 {
 	ok=1;
+
+	sendCommand("AT+CPIN?");
+	s=getCommand();
+	if(s.startsWith("ERROR"))//GSM module reboot
+		reboot();
+
+	cls();
+
 	do
 	{sendCommand("AT+CREG?");//Check whether it has registered in the network
 		s=getCommand();
@@ -360,12 +377,21 @@ void callMyself()
 	cls();
 }
 
-void reboot()
+void reboot(int timeToReboot=3000)
 {
 	error();
 	mySerial.end();
-	restartModule(1000);
+	restartModule(timeToReboot);
 	delay(5000);//SMS breaks without this pause
 	mySerial.begin(9600);
 	delay(1000);//just to be sure
+}
+
+void masterReboot()
+{
+	reboot(1000);
+	firstNetworkRegister();
+	setupSMS();
+	cls();
+	Serial.println("Reboot successful!");
 }
