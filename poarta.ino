@@ -11,13 +11,14 @@
 #define DEBUG A0
 #define Tx_GSM 3
 #define Rx_GSM 2
+#define MAX_REBOOT_COUNT 3
 
 void(* resetFunc) (void) = 0;//arduino reset function
 String getCommand(bool ok=0);
 void reboot(int timeToReboot=3000);
 
 char ch;
-String s,nr,name,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING";
+String s,nr,name,ath="ATH",OK="OK",ReadEntry="AT+CPBR=",RING="RING",ERROR="ERROR";
 int i,j,mx=0,l,v[SIM_SIZE+1];
 bool ok;
 unsigned long prec,curent,ulmax=4294967295,timp;
@@ -50,11 +51,11 @@ void setup()
 	delay(1000);
 
 	//Debug Mode Activation
-	if(analogRead(DEBUG)<=50)Serial.println("==DEBUG MODE==");
-	while(analogRead(DEBUG)<=50)
+	if(digitalRead(DEBUG)==LOW)Serial.println("==DEBUG MODE==");
+	while(digitalRead(DEBUG)==LOW)
 	{
 		//Serial.print("Valoare pin: ");
-		//Serial.println(analogRead(DEBUG));
+		//Serial.println(digitalRead(DEBUG));
 		while(Serial.available())
 		{
 			mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
@@ -145,7 +146,7 @@ void loop()
 		error();
 		retry();
 	}
-	else if(s.startsWith("ERROR"))//GSM module reboot
+	else if(s.startsWith(ERROR))//GSM module reboot
 	{
 		masterReboot();
 		//////resetFunc();
@@ -164,6 +165,10 @@ void loop()
 	{
 		// sendCommand(ReadEntry+String(SIM_SIZE));//request last number stored in SIM
 		sendCommand("AT+CPIN?");
+		s=getCommand();
+		if(s.startsWith(ERROR))//GSM module reboot
+			masterReboot();
+
 		prec=millis();
 	}
 }
@@ -278,9 +283,9 @@ void retry()
 {
 	sendCommand("AT+CSQ");
 	getCommand();
-	sendCommand("AT+COPS=1,2,\"22601\"");
+	sendCommand(String("AT+COPS=1,2,\"") + 22610 + "\""); // 22601 vodafone
 	s=getCommand();
-	if(s.startsWith("ERROR"))
+	if(s.startsWith(ERROR))
 	{
 		masterReboot();
 		return;
@@ -288,7 +293,7 @@ void retry()
 	delay(1000);
 	sendCommand("AT+COPS=0");
 	s=getCommand();
-	if(s.startsWith("ERROR"))
+	if(s.startsWith(ERROR))
 	{
 		masterReboot();
 		return;
@@ -337,7 +342,7 @@ void firstNetworkRegister()
 
 	sendCommand("AT+CPIN?");
 	s=getCommand();
-	if(s.startsWith("ERROR"))//GSM module reboot
+	if(s.startsWith(ERROR))//GSM module reboot
 		reboot();
 
 	cls();
@@ -345,7 +350,7 @@ void firstNetworkRegister()
 	do
 	{sendCommand("AT+CREG?");//Check whether it has registered in the network
 		s=getCommand();
-		if(s.startsWith("ERROR"))//GSM module reboot
+		if(s.startsWith(ERROR))//GSM module reboot
 		{
 			reboot();
 			continue;
@@ -369,17 +374,15 @@ void restartModule(int timeToReset)
 	digitalWrite(rst,LOW);
 }
 
-void callMyself()
-{
-	sendCommand("ATD+ +40767000747;");
-	delay(5000);
-	sendCommand(ath);
-	cls();
-}
-
+int rebootCount = 0;
 void reboot(int timeToReboot=3000)
 {
 	error();
+	if (rebootCount > MAX_REBOOT_COUNT)
+		resetFunc();//restarts the whole arduino, no questions asked
+
+	++rebootCount;
+
 	mySerial.end();
 	restartModule(timeToReboot);
 	delay(5000);//SMS breaks without this pause
@@ -389,9 +392,10 @@ void reboot(int timeToReboot=3000)
 
 void masterReboot()
 {
-	reboot(1000);
+	reboot();
 	firstNetworkRegister();
 	setupSMS();
 	cls();
 	Serial.println("Reboot successful!");
+	rebootCount = 0;//reset it, a reboot was successful
 }
