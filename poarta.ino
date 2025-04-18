@@ -23,6 +23,8 @@ int i,j,mx=0,l,v[SIM_SIZE+1];
 bool ok;
 unsigned long prec,curent,ulmax=4294967295,timp;
 
+int rebootCount = 0;
+
 //Create software serial object to communicate with SIM800L
 SoftwareSerial mySerial(Tx_GSM,Rx_GSM);//SIM800L Tx & Rx is connected to Arduino #3 & #2
 
@@ -33,7 +35,7 @@ void setup()
 	digitalWrite(poarta,LOW);
 	pinMode(rst,OUTPUT);
 	digitalWrite(rst,LOW);
-	pinMode(DEBUG,INPUT);
+	pinMode(DEBUG,INPUT_PULLUP);
 
 	restartModule(1000);
 
@@ -241,7 +243,7 @@ int checkNr(String nr)
 		sendCommand(ReadEntry+String(v[i]));
 		temp=getCommand();
 		cls();
-		if(s.startsWith(OK))continue;
+		if(temp.startsWith(OK))continue;
 		temp=getNumber(temp);
 		if(!checkDigits(temp)){i--;error();continue;}
 		if(nr==add40(temp))return i;
@@ -339,11 +341,20 @@ void readPhonebook()//reading the phonebook to keep in RAM
 void firstNetworkRegister()
 {
 	ok=1;
+	while (true) {
+		for (uint8_t retries = 0; retries < MAX_REBOOT_COUNT; ++retries) {
+			sendCommand("AT+CPIN?");
+			s=getCommand();
+			if(!s.startsWith(ERROR))
+				goto cpin_done;
+			delay(1000);
+		}
 
-	sendCommand("AT+CPIN?");
-	s=getCommand();
-	if(s.startsWith(ERROR))//GSM module reboot
 		reboot();
+	}
+
+cpin_done:
+	rebootCount = 0;
 
 	cls();
 
@@ -374,7 +385,6 @@ void restartModule(int timeToReset)
 	digitalWrite(rst,LOW);
 }
 
-int rebootCount = 0;
 void reboot(int timeToReboot=3000)
 {
 	error();
